@@ -289,8 +289,8 @@ services:
 
       TRAEFIK_LOG_FORMAT: json
       TRAEFIK_ENTRYPOINTS_web_ADDRESS: :8080
-      # 信任上游代理传递的 X-Forwarded-* 头 (用于反向代理场景)
-      TRAEFIK_ENTRYPOINTS_web_FORWARDEDHEADERS_INSECURE: "true"
+      # 信任上游代理传递的 X-Forwarded-* 头 (本地 + Docker 内网)
+      TRAEFIK_ENTRYPOINTS_web_FORWARDEDHEADERS_TRUSTEDIPS: "127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
       TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT: "false"
       TRAEFIK_PROVIDERS_DOCKER_NETWORK: cvat
       TRAEFIK_PROVIDERS_FILE_DIRECTORY: /etc/traefik/rules
