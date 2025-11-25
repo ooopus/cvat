@@ -42,6 +42,7 @@ show_help() {
     echo "  backup       备份数据库"
     echo "  shell        进入 cvat_server 容器"
     echo "  serverless   切换 Serverless (AI标注) 功能"
+    echo "  uninstall    卸载 CVAT"
     echo "  help         显示此帮助"
     echo ""
 }
@@ -169,6 +170,116 @@ case "${1:-help}" in
                     log_info "Serverless 已禁用"
                 else
                     log_info "请手动运行: ./cvat.sh down && ./cvat.sh start"
+                fi
+                ;;
+            *)
+                log_info "已取消"
+                ;;
+        esac
+        ;;
+
+    uninstall)
+        echo ""
+        log_warn "=========================================="
+        log_warn "CVAT 卸载向导"
+        log_warn "=========================================="
+        echo ""
+
+        # 检查运行状态
+        RUNNING=$(docker-compose $COMPOSE_FILES ps -q 2>/dev/null | wc -l)
+        if [ "$RUNNING" -gt 0 ]; then
+            log_info "检测到 $RUNNING 个运行中的容器"
+        fi
+
+        echo "请选择卸载级别:"
+        echo ""
+        echo "  1) 仅停止容器 (保留所有数据，可随时重启)"
+        echo "  2) 删除容器 (保留数据卷和镜像)"
+        echo "  3) 删除容器和数据卷 (保留镜像，数据将丢失!)"
+        echo "  4) 完全卸载 (删除容器、数据卷、镜像)"
+        echo "  0) 取消"
+        echo ""
+        read -p "请选择 [0-4]: " level
+
+        case "$level" in
+            1)
+                log_info "停止所有容器..."
+                docker-compose $COMPOSE_FILES stop
+                log_info "容器已停止，数据保留"
+                ;;
+            2)
+                log_warn "将删除所有容器 (数据卷保留)"
+                read -p "确认? [y/N]: " confirm
+                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    docker-compose $COMPOSE_FILES down
+                    # 同时清理 serverless 容器
+                    docker-compose -f docker-compose.yml -f docker-compose.secrets.yml -f components/serverless/docker-compose.serverless.yml down 2>/dev/null || true
+                    log_info "容器已删除"
+                else
+                    log_info "已取消"
+                fi
+                ;;
+            3)
+                log_error "警告: 这将删除所有数据，包括:"
+                echo "  - 所有标注项目和任务"
+                echo "  - 上传的图片和视频"
+                echo "  - 用户账户和设置"
+                echo "  - 数据库内容"
+                echo ""
+                read -p "输入 'DELETE' 确认删除: " confirm
+                if [ "$confirm" = "DELETE" ]; then
+                    log_info "备份数据库..."
+                    BACKUP_FILE="cvat_final_backup_$(date +%Y%m%d_%H%M%S).sql"
+                    docker exec cvat_db pg_dump -U root cvat > "$BACKUP_FILE" 2>/dev/null || true
+                    [ -f "$BACKUP_FILE" ] && log_info "备份已保存: $BACKUP_FILE"
+
+                    log_info "删除容器和数据卷..."
+                    docker-compose $COMPOSE_FILES down -v
+                    docker-compose -f docker-compose.yml -f docker-compose.secrets.yml -f components/serverless/docker-compose.serverless.yml down -v 2>/dev/null || true
+                    log_info "容器和数据卷已删除"
+                else
+                    log_info "已取消"
+                fi
+                ;;
+            4)
+                log_error "警告: 完全卸载将删除:"
+                echo "  - 所有容器"
+                echo "  - 所有数据卷 (项目、任务、用户数据)"
+                echo "  - 所有 CVAT 相关镜像"
+                echo ""
+                read -p "输入 'UNINSTALL' 确认完全卸载: " confirm
+                if [ "$confirm" = "UNINSTALL" ]; then
+                    log_info "备份数据库..."
+                    BACKUP_FILE="cvat_final_backup_$(date +%Y%m%d_%H%M%S).sql"
+                    docker exec cvat_db pg_dump -U root cvat > "$BACKUP_FILE" 2>/dev/null || true
+                    [ -f "$BACKUP_FILE" ] && log_info "备份已保存: $BACKUP_FILE"
+
+                    log_info "删除容器和数据卷..."
+                    docker-compose $COMPOSE_FILES down -v
+                    docker-compose -f docker-compose.yml -f docker-compose.secrets.yml -f components/serverless/docker-compose.serverless.yml down -v 2>/dev/null || true
+
+                    log_info "删除 CVAT 镜像..."
+                    docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "cvat|nuclio" | xargs -r docker rmi -f 2>/dev/null || true
+
+                    log_info "清理悬空镜像..."
+                    docker image prune -f
+
+                    echo ""
+                    log_info "完全卸载完成"
+                    echo ""
+                    echo "保留的文件:"
+                    echo "  - $CVAT_DIR (源代码和配置)"
+                    echo "  - $BACKUP_FILE (数据库备份)"
+                    echo ""
+                    read -p "是否删除 CVAT 目录? [y/N]: " del_dir
+                    if [[ "$del_dir" =~ ^[Yy]$ ]]; then
+                        log_warn "删除 $CVAT_DIR..."
+                        cd /
+                        rm -rf "$CVAT_DIR"
+                        log_info "CVAT 目录已删除"
+                    fi
+                else
+                    log_info "已取消"
                 fi
                 ;;
             *)
