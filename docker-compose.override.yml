@@ -1,0 +1,26 @@
+# CSRF 配置注入 - 用于反向代理场景
+x-custom-settings: &custom-settings
+  volumes:
+    - ./custom_settings.py:/home/django/cvat/settings/custom_settings.py:ro
+  environment:
+    DJANGO_SETTINGS_MODULE: cvat.settings.custom_settings
+
+services:
+  cvat_server:
+    <<: *custom-settings
+  cvat_worker_import:
+    <<: *custom-settings
+  cvat_worker_export:
+    <<: *custom-settings
+  cvat_worker_annotation:
+    <<: *custom-settings
+  cvat_worker_webhooks:
+    <<: *custom-settings
+  cvat_worker_quality_reports:
+    <<: *custom-settings
+  cvat_worker_utils:
+    <<: *custom-settings
+  cvat_worker_chunks:
+    <<: *custom-settings
+  cvat_worker_consensus:
+    <<: *custom-settings
