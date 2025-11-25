@@ -169,6 +169,10 @@ else
     log_warn "✗ django_secret_key secret 未找到"
 fi
 
+# 执行数据库迁移
+log_info "执行数据库迁移..."
+docker exec cvat_server python3 manage.py migrate
+
 # 创建管理员
 log_info "创建管理员账户..."
 docker exec cvat_server bash -c "
