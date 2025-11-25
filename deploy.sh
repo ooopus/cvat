@@ -83,14 +83,18 @@ fi
 # 生成或复用密码
 if [ -f .env ] && grep -q "CVAT_POSTGRES_PASSWORD" .env; then
     log_warn ".env 已存在，复用现有密码"
-    source .env
+    # 安全读取现有密码（避免 source 导致的特殊字符问题）
+    CVAT_POSTGRES_PASSWORD=$(grep "^CVAT_POSTGRES_PASSWORD=" .env | cut -d'=' -f2-)
+    DJANGO_SECRET_KEY=$(grep "^DJANGO_SECRET_KEY=" .env | cut -d'=' -f2-)
 else
     log_info "生成安全密码..."
-    CVAT_POSTGRES_PASSWORD=$(generate_password 32)
-    DJANGO_SECRET_KEY=$(generate_password 50)
+    # 只使用字母数字，避免特殊字符问题
+    CVAT_POSTGRES_PASSWORD=$(openssl rand -hex 16)
+    DJANGO_SECRET_KEY=$(openssl rand -hex 25)
 fi
 
-CVAT_ADMIN_PASSWORD=$(generate_password 16)
+# 管理员密码只用字母数字
+CVAT_ADMIN_PASSWORD=$(openssl rand -hex 8)
 
 # 创建 .env (敏感信息会通过 secrets 注入，但仍需在环境中定义以供 compose secrets 使用)
 log_info "创建环境配置..."
