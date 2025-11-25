@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #######################################
-# CVAT 部署脚本 v3.1 (Docker Secrets 版)
+# CVAT 部署脚本 v3.2 (本地构建版)
 # 适用于: Debian/Ubuntu + Nginx 反向代理
-# 特性: 使用 Docker Secrets 保护敏感信息
+# 特性: 本地构建镜像 + Docker Secrets
 #######################################
 
 set -e
@@ -28,6 +28,9 @@ command -v docker &>/dev/null || { log_error "Docker 未安装"; exit 1; }
 CVAT_DIR="/opt/cvat"
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
+# 仓库地址 (修改为你自己的 fork)
+CVAT_REPO="https://github.com/ooopus/cvat.git"
+
 echo ""
 log_info "=========================================="
 log_info "CVAT 部署配置 (Secrets 模式)"
@@ -43,6 +46,7 @@ USE_HTTPS=${USE_HTTPS:-n}
 
 read -p "是否启用 Serverless (AI自动标注)? [y/N]: " USE_SERVERLESS
 USE_SERVERLESS=${USE_SERVERLESS:-n}
+
 
 # 构建 CSRF 信任源
 if [[ "$USE_HTTPS" =~ ^[Yy]$ ]]; then
@@ -69,10 +73,11 @@ mkdir -p $CVAT_DIR
 cd $CVAT_DIR
 
 if [ ! -d ".git" ]; then
-    log_info "克隆 CVAT 仓库..."
-    git clone https://github.com/opencv/cvat.git .
+    log_info "克隆 CVAT 仓库: $CVAT_REPO"
+    git clone "$CVAT_REPO" .
 else
-    log_info "CVAT 仓库已存在"
+    log_info "CVAT 仓库已存在，拉取最新代码..."
+    git pull || log_warn "拉取失败，使用现有代码"
 fi
 
 # 生成或复用密码
@@ -120,13 +125,35 @@ if [[ "$USE_SERVERLESS" =~ ^[Yy]$ ]]; then
     log_info "已启用 Serverless"
 fi
 
-# 启动服务
+# 构建并启动服务
+log_info "构建 CVAT 镜像 (首次构建需要较长时间)..."
+$COMPOSE_CMD build
+
 log_info "启动 CVAT 服务 (使用 Docker Secrets)..."
-$COMPOSE_CMD pull
 $COMPOSE_CMD up -d
 
-log_info "等待服务启动 (45秒)..."
-sleep 45
+# 等待服务就绪 (健康检查)
+wait_for_service() {
+    local max_attempts=120
+    local attempt=1
+    log_info "等待服务就绪 (最长 ${max_attempts} 秒)..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if docker exec cvat_server python3 manage.py check &>/dev/null; then
+            log_info "服务已就绪 (耗时 ${attempt} 秒)"
+            return 0
+        fi
+        printf "\r  检查中... %d/%d 秒" $attempt $max_attempts
+        sleep 1
+        ((attempt++))
+    done
+
+    echo ""
+    log_error "服务启动超时"
+    return 1
+}
+
+wait_for_service || { log_error "CVAT 启动失败，请检查日志: docker logs cvat_server"; exit 1; }
 
 # 验证 secrets 注入
 log_info "验证 Secrets 配置..."
