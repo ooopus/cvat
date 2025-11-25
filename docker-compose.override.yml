@@ -4,6 +4,7 @@ x-custom-settings: &custom-settings
     - ./custom_settings.py:/home/django/cvat/settings/custom_settings.py:ro
   environment:
     DJANGO_SETTINGS_MODULE: cvat.settings.custom_settings
+    CVAT_BASE_URL: ${CVAT_BASE_URL:-}
 
 services:
   cvat_server:

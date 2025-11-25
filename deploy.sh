@@ -89,12 +89,12 @@ if [ -f .env ] && grep -q "CVAT_POSTGRES_PASSWORD" .env; then
 else
     log_info "生成安全密码..."
     # 只使用字母数字，避免特殊字符问题
-    CVAT_POSTGRES_PASSWORD=$(openssl rand -hex 16)
-    DJANGO_SECRET_KEY=$(openssl rand -hex 25)
+    CVAT_POSTGRES_PASSWORD=$(openssl rand -hex 32)
+    DJANGO_SECRET_KEY=$(openssl rand -hex 50)
 fi
 
 # 管理员密码只用字母数字
-CVAT_ADMIN_PASSWORD=$(openssl rand -hex 8)
+CVAT_ADMIN_PASSWORD=$(openssl rand -hex 16)
 
 # 创建 .env (敏感信息会通过 secrets 注入，但仍需在环境中定义以供 compose secrets 使用)
 log_info "创建环境配置..."
@@ -103,6 +103,7 @@ cat > .env <<EOF
 # 注意: 敏感信息通过 Docker Secrets 注入容器
 
 CVAT_HOST=$CVAT_HOST
+CVAT_BASE_URL=$PRIMARY_URL
 ALLOWED_HOSTS=*
 CSRF_TRUSTED_ORIGINS=$CSRF_ORIGINS
 
@@ -181,10 +182,6 @@ if [[ "$CSRF_CHECK" == *"$CVAT_HOST"* ]]; then
 else
     log_warn "✗ CSRF 配置可能有问题: $CSRF_CHECK"
 fi
-
-# 执行数据库迁移
-log_info "执行数据库迁移..."
-docker exec cvat_server python3 manage.py migrate
 
 # 创建管理员
 log_info "创建管理员账户..."
