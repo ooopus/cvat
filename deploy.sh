@@ -1,9 +1,9 @@
 #!/bin/bash
 
 #######################################
-# CVAT 部署脚本 v3.2 (本地构建版)
+# CVAT 部署脚本 v3.3 (配置注入版)
 # 适用于: Debian/Ubuntu + Nginx 反向代理
-# 特性: 本地构建镜像 + Docker Secrets
+# 特性: 官方镜像 + 配置注入 + Docker Secrets
 #######################################
 
 set -e
@@ -117,17 +117,17 @@ chmod 600 .env
 # 创建共享目录
 mkdir -p /mnt/cvat_share
 
-# 构建 compose 命令 (使用 secrets overlay)
-COMPOSE_CMD="docker-compose -f docker-compose.yml -f docker-compose.secrets.yml"
+# 构建 compose 命令 (使用 secrets + override)
+COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.secrets.yml -f docker-compose.override.yml"
 
 if [[ "$USE_SERVERLESS" =~ ^[Yy]$ ]]; then
     COMPOSE_CMD="$COMPOSE_CMD -f components/serverless/docker-compose.serverless.yml"
     log_info "已启用 Serverless"
 fi
 
-# 构建并启动服务
-log_info "构建 CVAT 镜像 (首次构建需要较长时间)..."
-$COMPOSE_CMD build
+# 拉取并启动服务
+log_info "拉取 CVAT 镜像..."
+$COMPOSE_CMD pull
 
 log_info "启动 CVAT 服务 (使用 Docker Secrets)..."
 $COMPOSE_CMD up -d
@@ -167,6 +167,15 @@ if docker exec cvat_server test -f /run/secrets/django_secret_key 2>/dev/null; t
     log_info "✓ django_secret_key secret 已注入"
 else
     log_warn "✗ django_secret_key secret 未找到"
+fi
+
+# 验证 CSRF 配置
+log_info "验证 CSRF 配置..."
+CSRF_CHECK=$(docker exec cvat_server python3 -c "from django.conf import settings; print(settings.CSRF_TRUSTED_ORIGINS)" 2>/dev/null)
+if [[ "$CSRF_CHECK" == *"$CVAT_HOST"* ]]; then
+    log_info "✓ CSRF 配置正确: $CSRF_CHECK"
+else
+    log_warn "✗ CSRF 配置可能有问题: $CSRF_CHECK"
 fi
 
 # 执行数据库迁移
